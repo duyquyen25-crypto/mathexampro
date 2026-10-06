@@ -232,6 +232,41 @@
             </div>
         </div>
 
+        <!-- Màn hình xem chi tiết bài làm của một học sinh -->
+        <div id="view-teacher-student-detail" class="view max-w-5xl mx-auto">
+            <div class="bg-white rounded-xl shadow-xl p-6 mb-6 sticky top-[72px] z-20 border-t-4 border-primary">
+                <div class="flex flex-col md:flex-row justify-between md:items-center gap-4 mb-4 border-b pb-4">
+                    <div>
+                        <h2 class="text-2xl font-bold text-primary">Chi Tiết Bài Làm Học Sinh</h2>
+                        <p class="text-gray-600 font-medium text-lg mt-1" id="detail-student-info">Họ tên (Lớp)</p>
+                    </div>
+                    <button onclick="navigate('teacher-submissions')" class="text-gray-500 hover:text-gray-800 px-4 py-2 border border-gray-300 rounded shadow-sm hover:bg-gray-50 transition font-medium whitespace-nowrap"><i class="fa-solid fa-arrow-left mr-2"></i>Quay lại danh sách</button>
+                </div>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                    <div class="bg-blue-50 p-3 rounded-lg border border-blue-100">
+                        <div class="text-sm text-gray-500 mb-1">Điểm số</div>
+                        <div class="font-bold text-2xl text-primary" id="detail-score">0/10</div>
+                    </div>
+                    <div class="bg-green-50 p-3 rounded-lg border border-green-100">
+                        <div class="text-sm text-gray-500 mb-1">Số câu đúng</div>
+                        <div class="font-bold text-2xl text-green-600" id="detail-correct">0</div>
+                    </div>
+                    <div class="bg-red-50 p-3 rounded-lg border border-red-100">
+                        <div class="text-sm text-gray-500 mb-1">Vi phạm gian lận</div>
+                        <div class="font-bold text-2xl text-red-600" id="detail-strikes">0</div>
+                    </div>
+                    <div class="bg-gray-50 p-3 rounded-lg border border-gray-200">
+                        <div class="text-sm text-gray-500 mb-1">Trạng thái</div>
+                        <div class="font-bold text-xl mt-1" id="detail-status">Hợp lệ</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="detail-questions-container" class="space-y-6 mb-20">
+                <!-- Rendered via JS -->
+            </div>
+        </div>
+
         <div id="view-student-login" class="view max-w-md mx-auto mt-20">
              <div class="bg-white rounded-2xl p-8 shadow-xl border-t-4 border-emerald-500">
                 <div class="text-center mb-6">
@@ -1125,7 +1160,142 @@
         }
 
         function viewStudentDetail(subId) {
-            Swal.fire('Tính năng đang phát triển', 'Xem chi tiết bài làm từng học sinh sẽ cập nhật ở phiên bản sau.', 'info');
+            const sub = db.submissions.find(s => s.id === subId);
+            if (!sub) { Swal.fire('Lỗi', 'Không tìm thấy bài nộp', 'error'); return; }
+            
+            const exam = db.exams[sub.pin];
+            if (!exam) { Swal.fire('Lỗi', 'Không tìm thấy đề thi gốc', 'error'); return; }
+
+            document.getElementById('detail-student-info').innerText = `${sub.studentName} - Lớp: ${sub.studentClass}`;
+            document.getElementById('detail-score').innerText = `${sub.score.toFixed(2)}/10`;
+            document.getElementById('detail-strikes').innerText = sub.strikes + ' lần';
+            
+            const statusEl = document.getElementById('detail-status');
+            if (sub.status === 'locked') {
+                statusEl.innerHTML = '<span class="text-red-600"><i class="fa-solid fa-lock mr-1"></i>Bị khóa bài</span>';
+            } else {
+                statusEl.innerHTML = '<span class="text-green-600"><i class="fa-solid fa-check mr-1"></i>Hoàn thành</span>';
+            }
+
+            const container = document.getElementById('detail-questions-container');
+            container.innerHTML = '';
+            
+            let totalCorrectAnswers = 0; // Đếm số câu đúng hoàn toàn (MCQ, Short, hoặc đúng 4/4 ý TF)
+
+            exam.questions.forEach((q, index) => {
+                const qDiv = document.createElement('div');
+                qDiv.className = 'bg-white p-6 rounded-xl shadow border border-gray-200';
+                
+                let html = `<h3 class="font-bold text-lg mb-4">Câu ${index + 1}: <span class="font-normal math-render">${q.content}</span></h3>`;
+                const stuAns = sub.answers[q.id];
+
+                if (q.type === 'mcq') {
+                    const isQCorrect = stuAns === q.correct;
+                    if (isQCorrect) totalCorrectAnswers++;
+                    
+                    html += `<div class="space-y-3 pl-4">`;
+                    const labels = ['A', 'B', 'C', 'D'];
+                    q.options.forEach((opt, oIdx) => {
+                        let optClass = 'p-3 border rounded-lg ';
+                        let iconHtml = '';
+                        
+                        if (q.correct === oIdx) {
+                            optClass += 'bg-green-100 border-green-500 font-bold text-green-900'; 
+                            iconHtml = '<div class="shrink-0 ml-3 bg-green-500 text-white text-xs px-2 py-1 rounded shadow"><i class="fa-solid fa-check mr-1"></i>Đáp án đúng</div>';
+                        } else if (stuAns === oIdx && stuAns !== q.correct) {
+                            optClass += 'bg-red-50 border-red-400 text-red-800'; 
+                            iconHtml = '<div class="shrink-0 ml-3 bg-red-500 text-white text-xs px-2 py-1 rounded shadow"><i class="fa-solid fa-xmark mr-1"></i>HS chọn sai</div>';
+                        } else {
+                            optClass += 'bg-gray-50 text-gray-500'; 
+                        }
+                        
+                        html += `
+                            <div class="${optClass} math-render flex items-center justify-between">
+                                <div><span class="font-bold mr-2">${labels[oIdx]}.</span> ${opt}</div>
+                                ${iconHtml}
+                            </div>
+                        `;
+                    });
+                    html += `</div>`;
+                    
+                    if(sub.status === 'locked') {
+                         html += `<div class="mt-4 text-sm font-bold text-red-500 italic"><i class="fa-solid fa-triangle-exclamation mr-1"></i> Bài thi bị khóa do gian lận nên không được tính điểm.</div>`;
+                    } else {
+                         html += `<div class="mt-4 text-sm font-bold ${isQCorrect ? 'text-green-600' : 'text-red-500'}"><i class="fa-solid ${isQCorrect ? 'fa-check-circle' : 'fa-circle-xmark'} mr-1"></i> Trạng thái: ${isQCorrect ? 'Trả lời Đúng' : 'Trả lời Sai / Bỏ trống'}</div>`;
+                    }
+
+                } else if (q.type === 'tf') {
+                    html += `<div class="space-y-3 pl-4">`;
+                    let subCorrects = 0;
+                    q.subQs.forEach((subQ, sIdx) => {
+                        const label = String.fromCharCode(97 + sIdx);
+                        const stuSubAns = (stuAns && Array.isArray(stuAns)) ? stuAns[sIdx] : null;
+                        const isSubCorrect = stuSubAns === subQ.isTrue;
+                        if(isSubCorrect) subCorrects++;
+
+                        let ansBadge = '';
+                        if (stuSubAns === null || stuSubAns === undefined) {
+                            ansBadge = '<span class="text-gray-400 italic">Chưa chọn</span>';
+                        } else {
+                            ansBadge = `<span class="${stuSubAns ? 'text-green-600 font-bold' : 'text-red-600 font-bold'}">${stuSubAns ? 'ĐÚNG' : 'SAI'}</span>`;
+                        }
+                        
+                        const resultIcon = isSubCorrect ? '<i class="fa-solid fa-check text-green-600 text-lg"></i>' : '<i class="fa-solid fa-xmark text-red-600 text-lg"></i>';
+
+                        html += `
+                            <div class="p-3 border rounded-lg ${isSubCorrect ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'} flex flex-col md:flex-row justify-between md:items-center gap-3">
+                                <div class="math-render"><span class="font-bold mr-1">${label})</span> ${subQ.text}</div>
+                                <div class="text-sm shrink-0 bg-white px-4 py-2 rounded shadow-sm border flex items-center gap-4">
+                                    <div>HS chọn: ${ansBadge}</div>
+                                    <div class="w-px h-4 bg-gray-300"></div>
+                                    <div>Đáp án: <span class="${subQ.isTrue ? 'text-green-600 font-bold' : 'text-red-600 font-bold'}">${subQ.isTrue ? 'ĐÚNG' : 'SAI'}</span></div>
+                                    <div class="ml-1">${resultIcon}</div>
+                                </div>
+                            </div>
+                        `;
+                    });
+                    html += `</div>`;
+                    if(subCorrects === 4) totalCorrectAnswers++;
+                    
+                    if(sub.status === 'locked') {
+                        html += `<div class="mt-4 text-sm font-bold text-red-500 italic"><i class="fa-solid fa-triangle-exclamation mr-1"></i> Bài thi bị khóa do gian lận.</div>`;
+                    } else {
+                        html += `<div class="mt-4 text-sm font-bold text-blue-600"><i class="fa-solid fa-chart-pie mr-1"></i> Thống kê: Đúng ${subCorrects}/4 ý.</div>`;
+                    }
+                    
+                } else if (q.type === 'short') {
+                    const stuAnsText = stuAns || '';
+                    const isQCorrect = stuAnsText && stuAnsText.toString().replace(/\s+/g,'').toLowerCase() === q.answer.toString().replace(/\s+/g,'').toLowerCase();
+                    if(isQCorrect) totalCorrectAnswers++;
+
+                    html += `
+                        <div class="pl-4 mt-2 space-y-3">
+                            <div class="p-4 border rounded-lg ${isQCorrect ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}">
+                                <span class="${isQCorrect ? 'text-green-700' : 'text-red-700'} text-sm font-bold block mb-1">Học sinh trả lời:</span>
+                                <div class="font-mono text-xl ${isQCorrect ? 'text-green-700' : (stuAnsText ? 'text-red-700' : 'text-gray-400 italic')}">${stuAnsText || 'Không có câu trả lời'}</div>
+                            </div>
+                            <div class="p-4 border rounded-lg bg-blue-50 border-blue-200">
+                                <span class="text-blue-700 text-sm font-bold block mb-1">Đáp án đúng của hệ thống:</span>
+                                <div class="font-mono text-xl text-blue-800 math-render">${q.answer}</div>
+                            </div>
+                        </div>
+                    `;
+                    
+                    if(sub.status === 'locked') {
+                        html += `<div class="mt-4 text-sm font-bold text-red-500 italic"><i class="fa-solid fa-triangle-exclamation mr-1"></i> Bài thi bị khóa do gian lận.</div>`;
+                    } else {
+                        html += `<div class="mt-4 text-sm font-bold ${isQCorrect ? 'text-green-600' : 'text-red-500'}"><i class="fa-solid ${isQCorrect ? 'fa-check-circle' : 'fa-circle-xmark'} mr-1"></i> Trạng thái: ${isQCorrect ? 'Trả lời Đúng' : 'Trả lời Sai / Bỏ trống'}</div>`;
+                    }
+                }
+
+                qDiv.innerHTML = html;
+                container.appendChild(qDiv);
+            });
+            
+            document.getElementById('detail-correct').innerText = `${totalCorrectAnswers}/${exam.questions.length}`;
+
+            navigate('teacher-student-detail');
+            setTimeout(renderMath, 100);
         }
 
 
